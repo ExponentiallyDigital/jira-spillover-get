@@ -40,6 +40,7 @@
 //
 // History (update version string on line ~95):
 //
+//	0.0.7 updated README.md, version bump
 //	0.0.6 updated sample prompts
 //	0.0.5 cosmetic source code changes
 //	0.0.4 updated help output
@@ -93,7 +94,7 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.0.6"
+	programVersion = "0.0.7"
 )
 
 // Default configuration constants

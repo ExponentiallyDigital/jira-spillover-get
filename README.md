@@ -5,7 +5,7 @@ A tool to identify and report on Jira "spillover": work items that weren't compl
 ### Table of contents
 <!-- vscode-markdown-toc -->
 * [Why spillover matters](#Whyspillovermatters)
-* [What does "jira-spillover-get" do?](#Whatdoesjira-spillover-getdo)
+* [What does *jira-spillover-get* do?](#Whatdoesjira-spillover-getdo)
 * [Key features](#Keyfeatures)
   * [Who should use this tool](#Whoshouldusethistool)
   * [Use cases](#Usecases)
@@ -56,20 +56,18 @@ A tool to identify and report on Jira "spillover": work items that weren't compl
 
 Spillover represents an inability to complete what was planned within a sprint. While occasional spillover can be justified, ongoing spillover can significantly impact Agile delivery. It indicates issues with planning and execution, leading to delays and reduced efficiency.
 
-The biggest challenge with spillover is tracking its occurrence, as Jira doesn't provide built-in tools specifically for this purpose. This tool fills that gap by automatically identifying and graphically reporting spillover.
+The biggest challenge with spillover is tracking its occurrence, as Jira doesn't provide built-in tools specifically for this purpose. This tool fills that gap by creating a TSV (tab separated variabe) output file of work items which have spilled over. The TSV file can be manipulated by Excel of simiar tools to produce rich graphical reporting.
 
-For more detailed information on the impact of spillover and recommended approaches, see my blog article ["Mastering agile spillover, analysis and strategic solutions"](https://www.exponentiallydigital.com/mastering-agile-spillover-analysis-and-strategic-solutions/).
+For an in-depth examination of why spillover matters, how to analyse it, and most importantly, what strategic approaches you can implement to reduce it, check out my <exponentiallydigital.com> blog post "[Mastering agile spillover, analysis and strategic solutions](https://www.exponentiallydigital.com/mastering-agile-spillover-analysis-and-strategic-solutions/)".
 
-## <a name='Whatdoesjira-spillover-getdo'></a>What does "jira-spillover-get" do?
+## <a name='Whatdoesjira-spillover-getdo'></a>What does *jira-spillover-get* do?
 
-Queries the specified Jira project to find all issues (excluding epics, risks, and sub-tasks) that have been:
+*jira-spillover-get* queries a specified Jira project via Atlassian APIs to identify all issues (excluding epics, risks, and sub-tasks) that:
 
-1. Modified within a user-defined timeframe
-2. Worked on across multiple sprints (indicating spillover)
+1. were modified within a user-defined timeframe
+2. spanned multiple sprints, indicating spillover
 
-The results are displayed on screen and exported to a tab-separated text file for further analysis in Excel or similar applications.
-
-Can be run interactively or as part of an automated process, such as a scheduled task or CI/CD pipeline.
+Results are shown on-screen and exported as a tab-separated text file for analysis in Excel or similar tools. It can run interactively or in automated workflows such as scheduled tasks or CI/CD pipelines.
 
 ## <a name='Keyfeatures'></a>Key features
 
