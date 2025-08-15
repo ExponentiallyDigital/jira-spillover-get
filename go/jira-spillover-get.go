@@ -39,7 +39,7 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
-//
+//  0.0.8 FIX golangci-lint recommendations (testing returns from resp.Body.Close(), file.Close, and logFile.Close))
 //	0.0.7 updated README.md, version bump
 //	0.0.6 updated sample prompts
 //	0.0.5 cosmetic source code changes
@@ -94,7 +94,7 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.0.7"
+	programVersion = "0.0.8"
 )
 
 // Default configuration constants
@@ -755,7 +755,11 @@ func validateProject(jiraBaseURL, authToken, projectKey string) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate project: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
 
 	// Check response status
 	if resp.StatusCode == 404 {
@@ -872,7 +876,9 @@ func fetchAllJiraIssues(jiraBaseURL, authToken, jqlQuery, fields string) ([]Issu
 
 		// Read response body
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			writeLog("WARNING", fmt.Sprintf("failed to close response body: %v", cerr))
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read response body for batch %d: %w", batchCount, err)
 		}
@@ -1040,7 +1046,10 @@ func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[stri
 
 		// Read response body
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		// using a separate variable cerr avoids overwriting the main err from ReadAll.
+		if cerr := resp.Body.Close(); cerr != nil {
+			writeLog("WARNING", fmt.Sprintf("failed to close response body: %v", cerr))
+		}
 		if err != nil {
 			writeLog("WARNING", fmt.Sprintf("Failed to read response for Epic %s: %v", epicKey, err))
 			epicTitles[epicKey] = "Epic Title Lookup Failed"
@@ -1234,7 +1243,11 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 		writeHeader = true
 		writeLog("INFO", fmt.Sprintf("Creating new file: %s", filename))
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("failed to close file: %v", err)
+		}
+	}()
 
 	// Write header row only if needed (new file or append to empty file)
 	if writeHeader {
@@ -1362,7 +1375,9 @@ func cleanup() {
 	if enableLogging && logFile != nil {
 		writeLog("INFO", fmt.Sprintf("Script execution completed in %.2f seconds", duration.Seconds()))
 		// Close log file
-		logFile.Close()
+		if err := logFile.Close(); err != nil {
+			log.Printf("failed to close log file: %v", err)
+		}
 	}
 }
 
