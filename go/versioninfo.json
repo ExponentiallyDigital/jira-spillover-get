@@ -3,13 +3,13 @@
                           "FileVersion":  {
                                               "Major":  0,
                                               "Minor":  0,
-                                              "Patch":  8,
+                                              "Patch":  9,
                                               "Build":  0
                                           },
                           "ProductVersion":  {
                                                  "Major":  0,
                                                  "Minor":  0,
-                                                 "Patch":  8,
+                                                 "Patch":  9,
                                                  "Build":  0
                                              },
                           "FileFlagsMask":  "3f",
@@ -22,14 +22,14 @@
                            "Comments":  "https://www.exponentiallydigital.com",
                            "CompanyName":  "Exponentially Digital",
                            "FileDescription":  "Jira spillover get",
-                           "FileVersion":  "0.0.8.0",
+                           "FileVersion":  "0.0.9.0",
                            "InternalName":  "jira-spillover-get",
                            "LegalCopyright":  "Copyright (C) 2025 Andrew Newbury",
                            "LegalTrademarks":  "",
                            "OriginalFilename":  "jira-spillover-get.exe",
                            "PrivateBuild":  "",
                            "ProductName":  "Jira Reporting",
-                           "ProductVersion":  "0.0.8.0",
+                           "ProductVersion":  "0.0.9.0",
                            "SpecialBuild":  ""
                        },
     "VarFileInfo":  {

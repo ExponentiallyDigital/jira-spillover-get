@@ -39,6 +39,7 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//  0.0.9 Changed "Sub Task" to "Sub-Task" to match Cloud out of box configuration
 //  0.0.8 FIX golangci-lint recommendations (testing returns from resp.Body.Close(), file.Close, and logFile.Close))
 //	0.0.7 updated README.md, version bump
 //	0.0.6 updated sample prompts
@@ -94,16 +95,16 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.0.8"
+	programVersion = "0.0.9"
 )
 
 // Default configuration constants
 const (
-	defaultStoryPointsField = "customfield_10002" // Default story points field for Jira Data Center/Server
-	defaultSprintField      = "customfield_14181" // Default sprint field for Jira Data Center/Server
-	defaultEpicLinkField    = "customfield_14182" // Default epic link field for Jira Data Center/Server
-	defaultEpicTitleField   = "customfield_14183" // Default epic title field for Jira Data Center/Server
-	defaultPairField        = "customfield_22311" // Default pair field for Jira Data Center/Server
+	defaultStoryPointsField = "customfield_10002" // Default story points field
+	defaultSprintField      = "customfield_14181" // Default sprint field
+	defaultEpicLinkField    = "customfield_14182" // Default epic link field
+	defaultEpicTitleField   = "customfield_14183" // Default epic title field
+	defaultPairField        = "customField_10186" // Pair field for Jira Cloud
 	batchSize               = 100                 // Number of issues to fetch per API call
 	defaultDaysPrior        = 10                  // Default number of days to look back
 )
@@ -132,7 +133,7 @@ type IssueFields struct {
 	StoryPoints    interface{}  `json:"customfield_10002"` // Story points (can be various types)
 	SprintField    interface{}  `json:"customfield_14181"` // Sprint field (can be array or null)
 	EpicLinkField  interface{}  `json:"customfield_14182"` // Epic link (can be string or null)
-	PairField      []PairMember `json:"customfield_22311"` // Pair field (can be array or null)
+	PairField      []PairMember `json:"customField_10186"` // Pair field (can be array or null)
 }
 
 // IssueType represents issue type information
@@ -811,7 +812,7 @@ func buildJQLQuery(projectKey string, daysPrior int) string {
 	// Excludes Epics, Risks, and Sub Tasks
 	// Only includes issues with Sprint field populated
 	// Only includes issues updated within the specified time frame
-	jqlQuery := fmt.Sprintf("project = %s AND issuetype not in (Epic, Risk, 'Sub Task') AND Sprint is not EMPTY AND updated >= -%dd",
+	jqlQuery := fmt.Sprintf("project = %s AND issuetype not in (Epic, Risk, 'Sub-Task') AND Sprint is not EMPTY AND updated >= -%dd",
 		projectKey, daysPrior)
 
 	writeLog("INFO", fmt.Sprintf("Using JQL query: %s", jqlQuery))
