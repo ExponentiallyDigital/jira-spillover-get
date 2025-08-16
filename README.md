@@ -2,7 +2,7 @@
 
 A tool to identify and report on Jira "spillover": work items that weren't completed within their originally planned sprint. This tools helps teams track delivery efficiency and improve planning.
 
-### Table of contents
+#### Table of contents
 <!-- vscode-markdown-toc -->
 * [Why spillover matters](#Whyspillovermatters)
 * [What does *jira-spillover-get* do?](#Whatdoesjira-spillover-getdo)
@@ -22,8 +22,6 @@ A tool to identify and report on Jira "spillover": work items that weren't compl
   * [Testing](#Testing)
 * [Usage](#Usage)
   * [Basic execution](#Basicexecution)
-  * [Command line options](#Commandlineoptions)
-  * [Command line parameters](#Commandlineparameters)
   * [Parameters](#Parameters)
   * [Examples](#Examples)
   * [Append mode feature](#Appendmodefeature)
@@ -67,7 +65,7 @@ For an in-depth examination of why spillover matters, how to analyse it, and mos
 1. were modified within a user-defined timeframe
 2. spanned multiple sprints, indicating spillover
 
-Results are shown on-screen and exported as a tab-separated text file for analysis in Excel or similar tools. It can run interactively or in automated workflows such as scheduled tasks or CI/CD pipelines.
+Results are shown on-screen and saved as a tab-separated text file for analysis in Excel or similar tools. It can run interactively or in automated workflows such as scheduled tasks or CI/CD pipelines.
 
 ## <a name='Keyfeatures'></a>Key features
 
@@ -101,7 +99,8 @@ Results are shown on-screen and exported as a tab-separated text file for analys
 ```text
 └── jira-spillover-get/
     ├── .gitignore
-    ├── LICENSE
+    ├── DIAGRAMS.md                     # Program logic and API interaction
+    ├── LICENSE                         # User license
     ├── README.md                       # The file you're reading now :D
     ├── build/
     │   ├── jira-spillover-get.exe      # Windows executable
@@ -207,34 +206,26 @@ Execute the application from the command line. It will prompt you for required p
 jira-spillover-get.exe
 ```
 
-### <a name='Commandlineoptions'></a>Command line options
-
-View available command-line parameters:
-
-```shell
-jira-spillover-get.exe -? | -help
-```
-
-### <a name='Commandlineparameters'></a>Command line parameters
+All command-line parameters:
 
 ```text
 jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url] 
     [-project project_key] [-fromdate yyyy-mm-dd] [-daysprior #] 
-    [-outputfile filename] [-append] [-log] [-debug] [-? | /? | --help | -help]
+    [-outputfile filename] [-append] [-pair customfield_xxyyzz] [-log] [-debug] [-? | /? | --help | -help]
 ```
 
 ### <a name='Parameters'></a>Parameters
 
-* `-TokenFile` path to file containing Jira API token (username:api-token format)
-* `-url` Jira base URL (e.g., `https://jira.company.com`)
+* `-TokenFile` path and filename of your Jira API token (email-address:api-token)
+* `-url` Jira base URL (e.g., `https://my-company.atlassian.net`)
 * `-project` Jira project key (e.g., EXPD)
 * `-fromdate` optional start date in yyyy-mm-dd format. Overrides daysprior if supplied
 * `-daysprior` optional number of days prior to today to check (default: 10)
-* `-outputfile` optional name for output file (default: issues_output.txt)
+* `-outputfile` optional name for output file (default: issues_output.tsv)
 * `-append` append to existing output file instead of overwriting
-* `-pair customfield_22311` specify the field name for paired assignees
-* `-log` enable logging to file
-* `-debug` enable display of each work item's sprint data during processing
+* `-pair customfield_10186` specify the field name is you have paired assignees, this field name is specific to your Jira implementation
+* `-log` enable logging to a file
+* `-debug` enable detailed debugging display
 * `-? | /? | --help | -help` show help message
 
 ### <a name='Examples'></a>Examples
@@ -242,7 +233,7 @@ jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url]
 **Command line with all parameters:**
 
 ```batch
-jira-spillover-get.exe -project EXPD -daysprior 14 -outputfile spillover_report -append -pair customfield_10186 -log -debug
+jira-spillover-get.exe -tokenfile my-api-key.txt -url https://my-company.atlassian.net -project EXPD -daysprior 30 -outputfile spillover_report -append -pair customfield_10186 -log -debug
 ```
 
 **Interactive mode (no parameters):**
@@ -279,7 +270,7 @@ jira-spillover-get.exe -project PROJ3 -outputfile combined_report.txt -append
 If your Jira instance uses a custom field for pair programming information, supply it with `-Pair`.
 
 ```batch
-jira-spillover-get.exe -project EXPD -daysprior 14 -Pair customfield_22311 -outputfile spillover_with_pair.tsv
+jira-spillover-get.exe -project EXPD -daysprior 14 -Pair customfield_10186 -outputfile spillover_with_pair.tsv
 ```
 
 ### <a name='Appendmodefeature'></a>Append mode feature
@@ -316,15 +307,7 @@ jira-spillover-get.exe -project EXPD -daysprior 7 -outputfile monthly_spillover.
 
 ## <a name='Outputformat'></a>Output format
 
-The application generates a tab-separated text file containing detailed information about each spillover issue including:
-
-* Issue type, key, and summary
-* Status and key dates (updated, created, resolved)
-* Assignment information (assignee, pair)
-* Project metadata (fix versions, story points, epic information)
-* Sprint information (number of sprints, first/last sprint)
-
-The application generates a tab-separated text file with the following columns:
+The application generates a tab-separated text file containing detailed information about each spillover issue with the following columns:
 
 * Issue Type
 * Issue Key
@@ -388,11 +371,11 @@ project = {PROJECT} AND issuetype not in (Epic, Risk, 'Sub Task')
 
 The application uses these Jira field mappings (configurable in source):
 
-* **Story Points** `customfield_10002`
-* **Sprint Field** `customfield_14181`
-* **Epic Link** `customfield_14182`
-* **Epic Title** `customfield_14183`
-* **Pair Field** `customfield_22311`
+* **Story Points** `customfield_10002` - standard for Jira Cloud
+* **Sprint Field** `customfield_14181` - standard for Jira Cloud
+* **Epic Link** `customfield_14182` - standard for Jira Cloud
+* **Epic Summary** `summary`
+* **Pair Field** `customfield_10186` please note that this field number will be unique to your Jira implementation and is not enabled by default. if you don't use "pair" programming you can ignore this field
 
 ## <a name='Errorhandling'></a>Error handling
 
@@ -426,7 +409,7 @@ Logs include:
 * For extremely large projects and a large date range, consider running after-hours or using smaller time ranges
 * Typical execution time ranges from 2 seconds to minutes depending on how many days prior you elect and the volume of issues in your project
 * Recommended execution frequency at the end of every sprint or for an entire program increment or set of increments
-* This application can sucessfully return thousands of issues over multiple years
+* This application has been designed to return thousands of issues over multiple years
 
 ## <a name='Troubleshooting'></a>Troubleshooting
 
@@ -506,4 +489,4 @@ Copyright (C) 2025 Andrew Newbury
 
 This tool is unsupported and may cause objects in mirrors to be closer than they appear etc. Batteries not included.
 
-It is strongly suggested that you test this tool in a non-production environment to ensure it meets your needs.
+It is suggested that you test this tool in a non-production environment to ensure it meets your needs.

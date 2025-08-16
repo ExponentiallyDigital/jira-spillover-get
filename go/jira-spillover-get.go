@@ -39,6 +39,7 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//	0.1.4 code optimisation and comment updates, no functional changes, upadted README.md, added DAIGRAMS.md
 //	0.1.3 FIX lookup and return epic summaries, not epic titles; FIX Pair counter
 //	0.1.2 FIX extract sprint names from both arrays of maps (the current Jira API format) and legacy string formats
 //  0.1.1 updated default custom names for out-of-the-box Jira Cloud (except Pair, which is a custom added field)
@@ -99,7 +100,7 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.1.3"
+	programVersion = "0.1.4"
 )
 
 // Default configuration constants
@@ -111,25 +112,25 @@ const (
 	defaultDaysPrior        = 10                  // Default number of days to look back
 )
 
-// IssueFields represents the fields section of a Jira issue
+// IssueFields contains all standard and custom fields for a Jira issue.
 type IssueFields struct {
-	IssueType        IssueType                  `json:"issuetype"`         // Issue type information
-	Status           Status                     `json:"status"`            // Issue status information
+	IssueType        IssueType                  `json:"issuetype"`         // Type of the issue (e.g., Story, Task)
+	Status           Status                     `json:"status"`            // Current status
 	Summary          string                     `json:"summary"`           // Issue summary/title
-	Updated          *string                    `json:"updated"`           // Last updated date
-	Created          *string                    `json:"created"`           // Creation date
-	ResolutionDate   *string                    `json:"resolutiondate"`    // Resolution date (can be null)
-	Assignee         *Assignee                  `json:"assignee"`          // Current assignee (can be null)
+	Updated          *string                    `json:"updated"`           // Last updated date (RFC3339)
+	Created          *string                    `json:"created"`           // Creation date (RFC3339)
+	ResolutionDate   *string                    `json:"resolutiondate"`    // Resolution date (nullable)
+	Assignee         *Assignee                  `json:"assignee"`          // Current assignee (nullable)
 	Creator          *Creator                   `json:"creator"`           // Issue creator
-	Project          Project                    `json:"project"`           // Project information
+	Project          Project                    `json:"project"`           // Project details
 	FixVersions      []FixVersion               `json:"fixVersions"`       // Target release versions
-	Components       []Component                `json:"components"`        // Issue components
+	Components       []Component                `json:"components"`        // Associated components
 	Labels           []string                   `json:"labels"`            // Issue labels
-	Resolution       *Resolution                `json:"resolution"`        // Resolution status (can be null)
-	StoryPoints      interface{}                `json:"customfield_10059"` // Story points (can be various types)
-	SprintField      interface{}                `json:"customfield_10020"` // Sprint field (can be array or null)
-	EpicLinkField    interface{}                `json:"customfield_10014"` // Epic link (can be string or null)
-	AdditionalFields map[string]json.RawMessage `json:"-"`                 // holds raw JSON for any fields not mapped above (including dynamic custom fields)
+	Resolution       *Resolution                `json:"resolution"`        // Resolution status (nullable)
+	StoryPoints      interface{}                `json:"customfield_10059"` // Story points (type varies)
+	SprintField      interface{}                `json:"customfield_10020"` // Sprint field (array or null)
+	EpicLinkField    interface{}                `json:"customfield_10014"` // Epic link (string or null)
+	AdditionalFields map[string]json.RawMessage `json:"-"`                 // Unmapped custom fields
 }
 
 // Issue represents a Jira issue from the search API response
@@ -199,78 +200,77 @@ type Status struct {
 	Name string `json:"name"` // Status name (Closed, Story Done, etc.)
 }
 
-// Assignee represents assignee information
+// Assignee contains the display name of the assignee.
 type Assignee struct {
-	DisplayName string `json:"displayName"` // Assignee display name
+	DisplayName string `json:"displayName"`
 }
 
-// Creator represents creator information
+// Creator contains the display name of the creator/reporter.
 type Creator struct {
-	DisplayName string `json:"displayName"` // Creator display name
+	DisplayName string `json:"displayName"`
 }
 
-// Project represents project information
+// Project contains the key and name of a Jira project.
 type Project struct {
-	Key  string `json:"key"`  // Project key
-	Name string `json:"name"` // Project name
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
-// FixVersion represents fix version information
+// FixVersion contains the name of a fix version.
 type FixVersion struct {
-	Name string `json:"name"` // Version name
+	Name string `json:"name"`
 }
 
-// Component represents component information
+// Component contains the name of a component.
 type Component struct {
-	Name string `json:"name"` // Component name
+	Name string `json:"name"`
 }
 
-// Resolution represents resolution information
+// Resolution contains the name of a resolution.
 type Resolution struct {
-	Name string `json:"name"` // Resolution name
+	Name string `json:"name"`
 }
 
-// PairMember represents pair programming member information
+// PairMember contains the display name of a pair programming member.
 type PairMember struct {
-	DisplayName string `json:"displayName"` // Pair member display name
+	DisplayName string `json:"displayName"`
 }
 
-// SearchResponse represents the response from Jira's search API
+// SearchResponse is the response from Jira's search API.
 type SearchResponse struct {
-	Issues     []Issue `json:"issues"`     // Array of issues
-	Total      int     `json:"total"`      // Total number of matching issues
-	StartAt    int     `json:"startAt"`    // Starting index for this batch
-	MaxResults int     `json:"maxResults"` // Maximum results per batch
+	Issues     []Issue `json:"issues"`
+	Total      int     `json:"total"`
+	StartAt    int     `json:"startAt"`
+	MaxResults int     `json:"maxResults"`
 }
 
-// ProjectInfo represents basic project information for validation
+// ProjectInfo contains basic project information for validation.
 type ProjectInfo struct {
-	Key  string `json:"key"`  // Project key
-	Name string `json:"name"` // Project name
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
-// EpicInfo represents epic information for title lookups
+// EpicInfo contains epic information for title lookups.
 type EpicInfo struct {
-	Key    string           `json:"key"`    // Epic key
-	Fields EpicFieldsLookup `json:"fields"` // Epic fields for title lookup
+	Key    string           `json:"key"`
+	Fields EpicFieldsLookup `json:"fields"`
 }
 
-// EpicFieldsLookup represents epic fields for title lookup
-// Only include Summary for epic title
+// EpicFieldsLookup contains only the summary for epic title lookup.
 type EpicFieldsLookup struct {
-	Summary string `json:"summary"` // Epic summary/title
+	Summary string `json:"summary"`
 }
 
-// SprintInfo represents parsed sprint information
+// SprintInfo contains parsed sprint information for an issue.
 type SprintInfo struct {
-	SprintCount int      // Number of sprints issue has been in
+	SprintCount int      // Number of sprints the issue has been in
 	SprintNames []string // List of unique sprint names
-	FirstSprint string   // Name of first sprint
-	LastSprint  string   // Name of last sprint
+	FirstSprint string   // Name of the first sprint
+	LastSprint  string   // Name of the last sprint
 	AllSprints  string   // Comma-separated list of all sprint names
 }
 
-// MultisprintIssue represents an issue that has been in multiple sprints
+// MultisprintIssue represents an issue that has been in multiple sprints.
 type MultisprintIssue struct {
 	Issue         Issue      // The original issue data
 	WorkedSprints int        // Number of sprints worked
