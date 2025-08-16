@@ -1,5 +1,5 @@
 // *************************************************************************************************
-// jira-spillover-data.go by Andrew Newbury, 2025-07-31
+// jira-spillover-get.go by Andrew Newbury, 2025-08-16
 //
 //		Purpose: Returns Jira issues (except epics, risks, and sub-tasks) for the user specified project
 //	          that have been modified within a user defined number of days that have also been worked
@@ -12,7 +12,7 @@
 //	        Configurable Jira base URL via command line or interactive prompt
 //	        Days prior filtering for modified issues
 //	        Multi-sprint issue identification and tracking
-//	        Epic title lookups with batch processing
+//	        Epic summary lookups with batch processing
 //	        Comprehensive logging to both console and log file
 //	        Progress tracking for large issue sets with batch processing
 //	        Project validation before processing
@@ -23,7 +23,7 @@
 //
 // Example usage, see function showUsage for details:
 //
-//	.\jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url] [-project project_key] [-fromdate yyyy-mm-dd] [-daysprior #] [-outputfile filename] [-append] [-log] [-? | /? | --help | -help]
+//	.\jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url] [-project project_key] [-fromdate yyyy-mm-dd] [-daysprior #] [-outputfile filename] [-pair customfield_10186] [-append] [-log] [-debug][-? | /? | --help | -help]
 //
 //	 With no supplied command line parameters, you will be prompted interactively.
 //
@@ -39,6 +39,10 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//	0.1.3 FIX lookup and return epic summaries, not epic titles; FIX Pair counter
+//	0.1.2 FIX extract sprint names from both arrays of maps (the current Jira API format) and legacy string formats
+//  0.1.1 updated default custom names for out-of-the-box Jira Cloud (except Pair, which is a custom added field)
+//  0.1.0 pair field provied optionally va command line
 //  0.0.9 Changed "Sub Task" to "Sub-Task" to match Cloud out of box configuration
 //  0.0.8 FIX golangci-lint recommendations (testing returns from resp.Body.Close(), file.Close, and logFile.Close))
 //	0.0.7 updated README.md, version bump
@@ -95,19 +99,38 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.0.9"
+	programVersion = "0.1.3"
 )
 
 // Default configuration constants
 const (
-	defaultStoryPointsField = "customfield_10002" // Default story points field
-	defaultSprintField      = "customfield_14181" // Default sprint field
-	defaultEpicLinkField    = "customfield_14182" // Default epic link field
-	defaultEpicTitleField   = "customfield_14183" // Default epic title field
-	defaultPairField        = "customField_10186" // Pair field for Jira Cloud
+	defaultStoryPointsField = "customfield_10059" // Default story points field
+	defaultSprintField      = "customfield_10020" // Default sprint field
+	defaultEpicLinkField    = "customfield_10014" // Default epic link field
 	batchSize               = 100                 // Number of issues to fetch per API call
 	defaultDaysPrior        = 10                  // Default number of days to look back
 )
+
+// IssueFields represents the fields section of a Jira issue
+type IssueFields struct {
+	IssueType        IssueType                  `json:"issuetype"`         // Issue type information
+	Status           Status                     `json:"status"`            // Issue status information
+	Summary          string                     `json:"summary"`           // Issue summary/title
+	Updated          *string                    `json:"updated"`           // Last updated date
+	Created          *string                    `json:"created"`           // Creation date
+	ResolutionDate   *string                    `json:"resolutiondate"`    // Resolution date (can be null)
+	Assignee         *Assignee                  `json:"assignee"`          // Current assignee (can be null)
+	Creator          *Creator                   `json:"creator"`           // Issue creator
+	Project          Project                    `json:"project"`           // Project information
+	FixVersions      []FixVersion               `json:"fixVersions"`       // Target release versions
+	Components       []Component                `json:"components"`        // Issue components
+	Labels           []string                   `json:"labels"`            // Issue labels
+	Resolution       *Resolution                `json:"resolution"`        // Resolution status (can be null)
+	StoryPoints      interface{}                `json:"customfield_10059"` // Story points (can be various types)
+	SprintField      interface{}                `json:"customfield_10020"` // Sprint field (can be array or null)
+	EpicLinkField    interface{}                `json:"customfield_10014"` // Epic link (can be string or null)
+	AdditionalFields map[string]json.RawMessage `json:"-"`                 // holds raw JSON for any fields not mapped above (including dynamic custom fields)
+}
 
 // Issue represents a Jira issue from the search API response
 type Issue struct {
@@ -115,25 +138,55 @@ type Issue struct {
 	Fields IssueFields `json:"fields"` // Issue field data
 }
 
-// IssueFields represents the fields section of a Jira issue
-type IssueFields struct {
-	IssueType      IssueType    `json:"issuetype"`         // Issue type information
-	Status         Status       `json:"status"`            // Issue status information
-	Summary        string       `json:"summary"`           // Issue summary/title
-	Updated        *string      `json:"updated"`           // Last updated date
-	Created        *string      `json:"created"`           // Creation date
-	ResolutionDate *string      `json:"resolutiondate"`    // Resolution date (can be null)
-	Assignee       *Assignee    `json:"assignee"`          // Current assignee (can be null)
-	Creator        *Creator     `json:"creator"`           // Issue creator
-	Project        Project      `json:"project"`           // Project information
-	FixVersions    []FixVersion `json:"fixVersions"`       // Target release versions
-	Components     []Component  `json:"components"`        // Issue components
-	Labels         []string     `json:"labels"`            // Issue labels
-	Resolution     *Resolution  `json:"resolution"`        // Resolution status (can be null)
-	StoryPoints    interface{}  `json:"customfield_10002"` // Story points (can be various types)
-	SprintField    interface{}  `json:"customfield_14181"` // Sprint field (can be array or null)
-	EpicLinkField  interface{}  `json:"customfield_14182"` // Epic link (can be string or null)
-	PairField      []PairMember `json:"customField_10186"` // Pair field (can be array or null)
+// UnmarshalJSON implements custom unmarshalling to capture both known fields and any additional custom fields
+func (f *IssueFields) UnmarshalJSON(data []byte) error {
+	// Define an alias type to avoid recursion
+	type Alias IssueFields
+	aux := &struct {
+		*Alias
+	}{Alias: (*Alias)(f)}
+
+	// First unmarshal into a generic map to capture raw fields
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rawMap); err != nil {
+		return err
+	}
+
+	// Unmarshal known fields from the raw map into aux
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Store any additional fields (those not represented by the struct tags above)
+	f.AdditionalFields = make(map[string]json.RawMessage)
+	// Known keys from IssueFields tags
+	knownKeys := map[string]bool{
+		"issuetype":         true,
+		"status":            true,
+		"summary":           true,
+		"updated":           true,
+		"created":           true,
+		"resolutiondate":    true,
+		"assignee":          true,
+		"creator":           true,
+		"project":           true,
+		"fixVersions":       true,
+		"components":        true,
+		"labels":            true,
+		"resolution":        true,
+		"customfield_10002": true,
+		"customfield_14181": true,
+		"customfield_14182": true,
+		// Do NOT include customfield_10186 (Pair) so it is added to AdditionalFields
+	}
+
+	for k, v := range rawMap {
+		if !knownKeys[k] {
+			f.AdditionalFields[k] = v
+		}
+	}
+
+	return nil
 }
 
 // IssueType represents issue type information
@@ -203,8 +256,9 @@ type EpicInfo struct {
 }
 
 // EpicFieldsLookup represents epic fields for title lookup
+// Only include Summary for epic title
 type EpicFieldsLookup struct {
-	EpicTitle interface{} `json:"customfield_14183"` // Epic title field
+	Summary string `json:"summary"` // Epic summary/title
 }
 
 // SprintInfo represents parsed sprint information
@@ -227,10 +281,13 @@ type MultisprintIssue struct {
 
 // Global variables for logging
 var (
-	logFile       *os.File
-	logger        *log.Logger
-	startTime     time.Time
-	enableLogging bool // Add flag to control logging
+	logFile           *os.File
+	logger            *log.Logger
+	startTime         time.Time
+	enableLogging     bool   // Add flag to control logging
+	enableDebug       bool   // Add flag to control debug output
+	pairFieldName     string // pairFieldName is the JSON field name to look up for Pair information when provided
+	pairFieldProvided bool   // pairFieldProvided is true when the -Pair command line switch was provided
 )
 
 /********************************************************************************************************************************/
@@ -590,6 +647,19 @@ func getAppendFlagFromCommandLine() bool {
 }
 
 /***********************************************************************************************************************************/
+// getDebugFlagFromCommandLine checks for -debug parameter in command line arguments
+func getDebugFlagFromCommandLine() bool {
+	args := os.Args[1:]
+	for _, arg := range args {
+		if strings.ToLower(arg) == "-debug" {
+			fmt.Println("Debug output enabled from command line")
+			return true
+		}
+	}
+	return false
+}
+
+/***********************************************************************************************************************************/
 // getProjectKeyInteractively prompts the user to enter a project key
 //
 // This function provides an interactive way to specify a project key if not provided
@@ -933,29 +1003,50 @@ func parseSprintField(sprintField interface{}) SprintInfo {
 		return info
 	}
 
-	// Convert to string slice if it's an array of interfaces
-	var sprintStrings []string
+	uniqueNames := make(map[string]bool)
+
 	switch v := sprintField.(type) {
 	case []interface{}:
 		for _, sprint := range v {
-			if sprintStr, ok := sprint.(string); ok {
-				sprintStrings = append(sprintStrings, sprintStr)
+			// Handle map[string]interface{} (Jira API format)
+			if sprintMap, ok := sprint.(map[string]interface{}); ok {
+				if nameVal, exists := sprintMap["name"]; exists {
+					if sprintName, ok := nameVal.(string); ok {
+						if !uniqueNames[sprintName] {
+							uniqueNames[sprintName] = true
+							info.SprintNames = append(info.SprintNames, sprintName)
+						}
+					}
+				}
+			} else if sprintStr, ok := sprint.(string); ok {
+				// Fallback: handle string format (legacy)
+				// Try to extract name=... from string
+				nameRegex := regexp.MustCompile(`name=([^,]+)`)
+				matches := nameRegex.FindStringSubmatch(sprintStr)
+				if len(matches) > 1 {
+					sprintName := matches[1]
+					if !uniqueNames[sprintName] {
+						uniqueNames[sprintName] = true
+						info.SprintNames = append(info.SprintNames, sprintName)
+					}
+				}
 			}
 		}
 	case []string:
-		sprintStrings = v
+		for _, sprintStr := range v {
+			nameRegex := regexp.MustCompile(`name=([^,]+)`)
+			matches := nameRegex.FindStringSubmatch(sprintStr)
+			if len(matches) > 1 {
+				sprintName := matches[1]
+				if !uniqueNames[sprintName] {
+					uniqueNames[sprintName] = true
+					info.SprintNames = append(info.SprintNames, sprintName)
+				}
+			}
+		}
 	case string:
-		sprintStrings = []string{v}
-	default:
-		return info // Unknown format, return empty info
-	}
-
-	// Extract unique sprint names using regex
-	nameRegex := regexp.MustCompile(`name=([^,]+)`)
-	uniqueNames := make(map[string]bool)
-
-	for _, sprintStr := range sprintStrings {
-		matches := nameRegex.FindStringSubmatch(sprintStr)
+		nameRegex := regexp.MustCompile(`name=([^,]+)`)
+		matches := nameRegex.FindStringSubmatch(v)
 		if len(matches) > 1 {
 			sprintName := matches[1]
 			if !uniqueNames[sprintName] {
@@ -997,9 +1088,9 @@ func getEpicLink(epicLinkField interface{}) string {
 }
 
 /***********************************************************************************************************************************/
-// fetchEpicTitles retrieves epic titles for the given epic keys
+// fetchEpicTitles retrieves epic summaries for the given epic keys
 //
-// This function makes API calls to fetch epic title information for multiple epics.
+// This function makes API calls to fetch epic summary information for multiple epics.
 //
 // Parameters:
 //   jiraBaseURL - base URL of the Jira instance
@@ -1007,7 +1098,7 @@ func getEpicLink(epicLinkField interface{}) string {
 //   epicKeys    - slice of epic keys to look up
 //
 // Returns:
-//   map[string]string - mapping of epic key to epic title
+//   map[string]string - mapping of epic key to epic summary
 //   error - any error encountered during fetching
 func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[string]string, error) {
 	epicTitles := make(map[string]string)
@@ -1019,16 +1110,16 @@ func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[stri
 	writeLog("INFO", fmt.Sprintf("Looking up %d unique Epic titles", len(epicKeys)))
 
 	for i, epicKey := range epicKeys {
-		writeLog("INFO", fmt.Sprintf("Looking up Epic title %d of %d: %s", i+1, len(epicKeys), epicKey))
+		writeLog("INFO", fmt.Sprintf("Looking up Epic summary %d of %d: %s", i+1, len(epicKeys), epicKey))
 
-		// Build epic lookup URL
-		epicURL := fmt.Sprintf("%s/rest/api/2/issue/%s?fields=%s", jiraBaseURL, epicKey, defaultEpicTitleField)
+		// Build epic lookup URL: request only summary
+		epicURL := fmt.Sprintf("%s/rest/api/2/issue/%s?fields=summary", jiraBaseURL, epicKey)
 
 		// Create HTTP request
 		req, err := http.NewRequest("GET", epicURL, nil)
 		if err != nil {
 			writeLog("WARNING", fmt.Sprintf("Failed to create request for Epic %s: %v", epicKey, err))
-			epicTitles[epicKey] = "Epic Title Lookup Failed"
+			epicTitles[epicKey] = "Epic Summary Lookup Failed"
 			continue
 		}
 
@@ -1041,7 +1132,7 @@ func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[stri
 		resp, err := client.Do(req)
 		if err != nil {
 			writeLog("WARNING", fmt.Sprintf("Failed to lookup Epic %s: %v", epicKey, err))
-			epicTitles[epicKey] = "Epic Title Lookup Failed"
+			epicTitles[epicKey] = "Epic Summary Lookup Failed"
 			continue
 		}
 
@@ -1053,14 +1144,14 @@ func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[stri
 		}
 		if err != nil {
 			writeLog("WARNING", fmt.Sprintf("Failed to read response for Epic %s: %v", epicKey, err))
-			epicTitles[epicKey] = "Epic Title Lookup Failed"
+			epicTitles[epicKey] = "Epic Summary Lookup Failed"
 			continue
 		}
 
 		// Check HTTP status
 		if resp.StatusCode != 200 {
 			writeLog("WARNING", fmt.Sprintf("HTTP %d error looking up Epic %s", resp.StatusCode, epicKey))
-			epicTitles[epicKey] = "Epic Title Lookup Failed"
+			epicTitles[epicKey] = "Epic Summary Lookup Failed"
 			continue
 		}
 
@@ -1068,26 +1159,21 @@ func fetchEpicTitles(jiraBaseURL, authToken string, epicKeys []string) (map[stri
 		var epicInfo EpicInfo
 		if err := json.Unmarshal(body, &epicInfo); err != nil {
 			writeLog("WARNING", fmt.Sprintf("Failed to parse Epic response for %s: %v", epicKey, err))
-			epicTitles[epicKey] = "Epic Title Lookup Failed"
+			epicTitles[epicKey] = "Epic Summary Lookup Failed"
 			continue
 		}
 
-		// Extract epic title
+		// Extract epic title from summary only
 		var epicTitle string
-		if epicInfo.Fields.EpicTitle != nil {
-			if title, ok := epicInfo.Fields.EpicTitle.(string); ok && title != "" {
-				epicTitle = title
-			} else {
-				epicTitle = "No Epic Title"
-			}
+		if epicInfo.Fields.Summary != "" {
+			epicTitle = epicInfo.Fields.Summary
 		} else {
 			epicTitle = "No Epic Title"
 		}
-
 		epicTitles[epicKey] = epicTitle
 	}
 
-	writeLog("INFO", fmt.Sprintf("Retrieved %d Epic titles", len(epicTitles)))
+	writeLog("INFO", fmt.Sprintf("Retrieved %d Epic summaries", len(epicTitles)))
 	return epicTitles, nil
 }
 
@@ -1193,12 +1279,74 @@ func extractFieldValues(issue Issue) map[string]string {
 	}
 
 	// Pair information
-	var pairNames []string
-	for _, pair := range issue.Fields.PairField {
-		pairNames = append(pairNames, pair.DisplayName)
-	}
-	values["Pair"] = strings.Join(pairNames, ", ")
+	if pairFieldProvided && pairFieldName != "" {
+		// DEBUG: Show keys in AdditionalFields if debug is enabled
+		if enableDebug {
+			var keys []string
+			for k := range issue.Fields.AdditionalFields {
+				keys = append(keys, k)
+			}
+			writeLog("DEBUG", fmt.Sprintf("Issue %s AdditionalFields keys: %v", issue.Key, keys))
+		}
+		// Attempt to read the configured custom field from AdditionalFields
+		if raw, ok := issue.Fields.AdditionalFields[pairFieldName]; ok && raw != nil {
+			if enableDebug {
+				writeLog("DEBUG", fmt.Sprintf("Issue %s raw Pair field (%s): %s", issue.Key, pairFieldName, string(raw)))
+			}
+			// Try several possible shapes: array of objects, single object, array of strings, or single string
+			// 1) array of objects [{"displayName": "Alice"}, ...]
+			var pairNames []string
+			var parsed bool
 
+			// attempt array of objects
+			var pairMembers []PairMember
+			if err := json.Unmarshal(raw, &pairMembers); err == nil && len(pairMembers) > 0 {
+				for _, pair := range pairMembers {
+					pairNames = append(pairNames, pair.DisplayName)
+				}
+				parsed = true
+			}
+
+			if !parsed {
+				// attempt single object {"displayName":"Alice"}
+				var single PairMember
+				if err := json.Unmarshal(raw, &single); err == nil && single.DisplayName != "" {
+					pairNames = append(pairNames, single.DisplayName)
+					parsed = true
+				}
+			}
+
+			if !parsed {
+				// attempt array of strings ["Alice","Bob"]
+				var strArr []string
+				if err := json.Unmarshal(raw, &strArr); err == nil && len(strArr) > 0 {
+					pairNames = append(pairNames, strArr...)
+					parsed = true
+				}
+			}
+
+			if !parsed {
+				// attempt single string "Alice"
+				var s string
+				if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+					pairNames = append(pairNames, s)
+					parsed = true
+				}
+			}
+
+			if parsed {
+				values["Pair"] = strings.Join(pairNames, ", ")
+			} else {
+				values["Pair"] = ""
+			}
+		} else {
+			// Field not present in this issue
+			values["Pair"] = ""
+		}
+	} else {
+		// No custom field configured; use literal header/placeholder
+		values["Pair"] = "Pair"
+	}
 	return values
 }
 
@@ -1213,7 +1361,7 @@ func extractFieldValues(issue Issue) map[string]string {
 //
 // Returns:
 //   error - any error encountered during file writing
-func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epicTitles map[string]string, appendMode bool) error {
+func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epicTitles map[string]string, appendMode bool) (int, error) {
 	// Ensure filename has .tsv extension
 	if !strings.HasSuffix(filename, ".tsv") {
 		filename += ".tsv"
@@ -1232,14 +1380,14 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 		// Open file in append mode
 		file, err = os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			return fmt.Errorf("failed to open output file for append: %w", err)
+			return 0, fmt.Errorf("failed to open output file for append: %w", err)
 		}
 		writeLog("INFO", fmt.Sprintf("Appending to existing file: %s", filename))
 	} else {
 		// Create new file (overwrites existing)
 		file, err = os.Create(filename)
 		if err != nil {
-			return fmt.Errorf("failed to create output file: %w", err)
+			return 0, fmt.Errorf("failed to create output file: %w", err)
 		}
 		writeHeader = true
 		writeLog("INFO", fmt.Sprintf("Creating new file: %s", filename))
@@ -1267,7 +1415,7 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 			"Components",
 			"Story Points",
 			"Epic Link",
-			"Epic Title",
+			"Epic Summary",
 			"Labels",
 			"Resolution",
 			"Reporter",
@@ -1279,21 +1427,28 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 
 		// Write header
 		if _, err := file.WriteString(strings.Join(header, "\t") + "\n"); err != nil {
-			return fmt.Errorf("failed to write header: %w", err)
+			return 0, fmt.Errorf("failed to write header: %w", err)
 		}
 	}
 
 	// Write data rows
+	pairFieldFoundCount := 0
 	for _, multisprintIssue := range multisprintIssues {
 		issue := multisprintIssue.Issue
 		values := extractFieldValues(issue)
-
-		// Get epic title
+		// Debug: log the Pair value for each issue
+		if enableDebug && pairFieldProvided && pairFieldName != "" {
+			writeLog("DEBUG", fmt.Sprintf("writeOutputFile: Issue %s Pair value: '%s'", issue.Key, values["Pair"]))
+		}
+		// Count non-empty Pair field for found count (trim whitespace)
+		if pairFieldProvided && pairFieldName != "" && strings.TrimSpace(values["Pair"]) != "" {
+			pairFieldFoundCount++
+		}
+		// Get epic summary
 		epicTitle := epicTitles[multisprintIssue.EpicLink]
 		if epicTitle == "" {
-			epicTitle = "No Epic Title"
+			epicTitle = "No Epic Summary"
 		}
-
 		// Build row data
 		row := []string{
 			values["IssueType"],
@@ -1319,10 +1474,9 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 			multisprintIssue.SprintInfo.LastSprint,
 			multisprintIssue.SprintInfo.AllSprints,
 		}
-
 		// Write row
 		if _, err := file.WriteString(strings.Join(row, "\t") + "\n"); err != nil {
-			return fmt.Errorf("failed to write data row: %w", err)
+			return 0, fmt.Errorf("failed to write data row: %w", err)
 		}
 	}
 
@@ -1331,7 +1485,7 @@ func writeOutputFile(filename string, multisprintIssues []MultisprintIssue, epic
 	} else {
 		writeLog("INFO", fmt.Sprintf("Successfully wrote %d issues to %s", len(multisprintIssues), filename))
 	}
-	return nil
+	return pairFieldFoundCount, nil
 }
 
 /***********************************************************************************************************************************/
@@ -1356,6 +1510,22 @@ func getLoggingFlagFromCommandLine() bool {
 		}
 	}
 	return false
+}
+
+// getPairFromCommandLine checks for -Pair <fieldname> parameter in command line arguments
+// If provided, it returns the field name and sets pairFieldProvided to true
+func getPairFromCommandLine() string {
+	args := os.Args[1:]
+	for i, arg := range args {
+		if strings.ToLower(arg) == "-pair" && i+1 < len(args) {
+			// record provided flag
+			pairFieldProvided = true
+			// User-supplied field name should be used as-is (case-sensitive in Jira JSON)
+			return args[i+1]
+		}
+	}
+	pairFieldProvided = false
+	return ""
 }
 
 /***********************************************************************************************************************************/
@@ -1410,11 +1580,13 @@ Parameters:
   -TokenFile    Path to file containing Jira API token (username:api-token format)
   -url          Jira base URL (e.g., https://jira.company.com)
   -project      Jira project key (e.g., EXPD)
+  -pair         Optional custom field name to use for Pair data (e.g., customfield_22311)
   -fromdate     Optional start date in yyyy-mm-dd format. Overrides daysprior if supplied
   -daysprior    Optional number of days prior to today to check (default: %d)
   -outputfile   Optional name for output file (default: spillover_rpt.tsv)
   -append       Append to existing output file instead of overwriting
   -log          Enable logging to file
+  -debug		Enable display of each work item's sprint data during processing
   -?            Show this help message
 
 Examples:
@@ -1458,6 +1630,9 @@ func main() {
 
 	// Check if logging should be enabled
 	enableLogging = getLoggingFlagFromCommandLine()
+
+	// Check if debug output should be enabled
+	enableDebug = getDebugFlagFromCommandLine()
 
 	// Initialize logging system
 	if err := initLogging(); err != nil {
@@ -1545,6 +1720,9 @@ func main() {
 	// Get append flag
 	appendMode := getAppendFlagFromCommandLine()
 
+	// Get Pair field from command line (optional)
+	pairFieldName = getPairFromCommandLine()
+
 	// Validate project exists
 	if err := validateProject(jiraBaseURL, authToken, projectKey); err != nil {
 		writeLog("ERROR", fmt.Sprintf("Project validation failed: %v", err))
@@ -1556,10 +1734,33 @@ func main() {
 	jqlQuery := buildJQLQuery(projectKey, daysPrior)
 
 	// Define required fields for API request
+	// Build list of fields to request from Jira. Only include the custom Pair field if the user supplied -Pair.
 	requiredFields := []string{
 		"issuetype", "key", "summary", "status", "updated", "created", "resolutiondate",
-		"assignee", defaultPairField, "fixVersions", "components", defaultStoryPointsField,
+		"assignee",
+		// the pair field (if configured) will be inserted after "assignee"
+		"fixVersions", "components", defaultStoryPointsField,
 		defaultEpicLinkField, "labels", "resolution", defaultSprintField, "creator", "project",
+	}
+	if pairFieldProvided && pairFieldName != "" {
+		// insert the user-specified field name after "assignee"
+		// find index of "assignee"
+		idx := -1
+		for i, v := range requiredFields {
+			if v == "assignee" {
+				idx = i
+				break
+			}
+		}
+		if idx >= 0 {
+			// insert at idx+1
+			before := append([]string{}, requiredFields[:idx+1]...)
+			after := append([]string{}, requiredFields[idx+1:]...)
+			requiredFields = append(append(before, pairFieldName), after...)
+		} else {
+			// fallback: append to the front
+			requiredFields = append([]string{pairFieldName}, requiredFields...)
+		}
 	}
 	fieldsParam := strings.Join(requiredFields, ",")
 
@@ -1598,6 +1799,60 @@ func main() {
 			}
 		}
 
+		// DEBUG: Log the raw SprintField value for this issue if debug flag is set
+		if enableDebug {
+			var debugLines []string
+			debugLines = append(debugLines, fmt.Sprintf("Issue %s raw SprintField:", issue.Key))
+			switch sprints := issue.Fields.SprintField.(type) {
+			case []interface{}:
+				for _, sprint := range sprints {
+					if sprintMap, ok := sprint.(map[string]interface{}); ok {
+						// Get id and name for header
+						idVal := sprintMap["id"]
+						nameVal := sprintMap["name"]
+						idStr := fmt.Sprintf("%v", idVal)
+						nameStr := fmt.Sprintf("%v", nameVal)
+						debugLines = append(debugLines, fmt.Sprintf("Sprint %s: %s", idStr, nameStr))
+						// Board ID
+						if val := sprintMap["boardId"]; val != nil {
+							debugLines = append(debugLines, fmt.Sprintf("  - Board ID: %v", val))
+						}
+						// State
+						if val, ok := sprintMap["state"]; ok {
+							debugLines = append(debugLines, fmt.Sprintf("  - State: %v", val))
+						}
+						// Goal
+						if val, ok := sprintMap["goal"]; ok {
+							goalStr := fmt.Sprintf("%v", val)
+							if goalStr == "" {
+								goalStr = "(empty)"
+							}
+							debugLines = append(debugLines, fmt.Sprintf("  - Goal: %s", goalStr))
+						} else {
+							debugLines = append(debugLines, "  - Goal: (empty)")
+						}
+						// Start Date
+						if val, ok := sprintMap["startDate"]; ok {
+							debugLines = append(debugLines, fmt.Sprintf("  - Start Date: %v", val))
+						}
+						// End Date
+						if val, ok := sprintMap["endDate"]; ok {
+							debugLines = append(debugLines, fmt.Sprintf("  - End Date:   %v", val))
+						}
+						// Complete Date
+						if val, ok := sprintMap["completeDate"]; ok {
+							debugLines = append(debugLines, fmt.Sprintf("  - Complete Date: %v", val))
+						}
+					}
+				}
+			case nil:
+				debugLines = append(debugLines, "  [No sprint data]")
+			default:
+				debugLines = append(debugLines, fmt.Sprintf("  [Unrecognized SprintField type: %T]", sprints))
+			}
+			writeLog("DEBUG", strings.Join(debugLines, "\n"))
+		}
+
 		// Parse sprint information
 		sprintInfo := parseSprintField(issue.Fields.SprintField)
 
@@ -1632,13 +1887,16 @@ func main() {
 
 	writeLog("INFO", fmt.Sprintf("Found %d issues that have been worked on in multiple sprints", len(multisprintIssues)))
 
-	// Fetch epic titles
+	// Debug: Show how many issues had a non-empty Pair field
+	// (moved to after writeOutputFile call, using local variable)
+
+	// Fetch epic summaries
 	var epicTitles map[string]string
 	if len(epicKeysToLookup) > 0 {
 		epicTitles, err = fetchEpicTitles(jiraBaseURL, authToken, epicKeysToLookup)
 		if err != nil {
-			writeLog("WARNING", fmt.Sprintf("Failed to fetch some epic titles: %v", err))
-			// Continue with empty epic titles map
+			writeLog("WARNING", fmt.Sprintf("Failed to fetch some epic summaries: %v", err))
+			// Continue with empty epic summary map
 			epicTitles = make(map[string]string)
 		}
 	} else {
@@ -1647,9 +1905,19 @@ func main() {
 
 	// Write output file
 	writeLog("INFO", "Formatting output data...")
-	if err := writeOutputFile(outputFile, multisprintIssues, epicTitles, appendMode); err != nil {
+	pairFieldFoundCount, err := writeOutputFile(outputFile, multisprintIssues, epicTitles, appendMode)
+	if err != nil {
 		writeLog("ERROR", fmt.Sprintf("Failed to write output file: %v", err))
 		os.Exit(1)
+	}
+	// Debug: Show how many issues had a non-empty Pair field
+	if enableDebug && pairFieldProvided && pairFieldName != "" {
+		writeLog("DEBUG", fmt.Sprintf("pairFieldFoundCount after processing: %d", pairFieldFoundCount))
+	}
+	// If user supplied -Pair but the field wasn't found on any issue, warn the user
+	if pairFieldProvided && pairFieldName != "" && pairFieldFoundCount == 0 {
+		writeLog("WARNING", fmt.Sprintf("Pair field '%s' was requested but not found on any issues. Check the field name.", pairFieldName))
+		fmt.Printf("Warning: Pair field '%s' was requested but not found on any issues. Check the field name.\n", pairFieldName)
 	}
 
 	fmt.Printf("\n\033[32mSuccess!\033[0m Processed %d issues and found %d spillover issues.\n",

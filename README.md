@@ -220,7 +220,7 @@ jira-spillover-get.exe -? | -help
 ```text
 jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url] 
     [-project project_key] [-fromdate yyyy-mm-dd] [-daysprior #] 
-    [-outputfile filename] [-append] [-log] [-? | /? | --help | -help]
+    [-outputfile filename] [-append] [-log] [-debug] [-? | /? | --help | -help]
 ```
 
 ### <a name='Parameters'></a>Parameters
@@ -232,7 +232,9 @@ jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url]
 * `-daysprior` optional number of days prior to today to check (default: 10)
 * `-outputfile` optional name for output file (default: issues_output.txt)
 * `-append` append to existing output file instead of overwriting
+* `-pair customfield_22311` specify the field name for paired assignees
 * `-log` enable logging to file
+* `-debug` enable display of each work item's sprint data during processing
 * `-? | /? | --help | -help` show help message
 
 ### <a name='Examples'></a>Examples
@@ -240,7 +242,7 @@ jira-spillover-get.exe [-TokenFile token_file_path] [-url jira_base_url]
 **Command line with all parameters:**
 
 ```batch
-jira-spillover-get.exe -project EXPD -daysprior 14 -outputfile spillover_report.txt -log
+jira-spillover-get.exe -project EXPD -daysprior 14 -outputfile spillover_report -append -pair customfield_10186 -log -debug
 ```
 
 **Interactive mode (no parameters):**
@@ -270,6 +272,14 @@ jira-spillover-get.exe -project PROJ1 -outputfile combined_report.txt
 rem Append additional projects
 jira-spillover-get.exe -project PROJ2 -outputfile combined_report.txt -append
 jira-spillover-get.exe -project PROJ3 -outputfile combined_report.txt -append
+```
+
+**Using a custom Pair field**
+
+If your Jira instance uses a custom field for pair programming information, supply it with `-Pair`.
+
+```batch
+jira-spillover-get.exe -project EXPD -daysprior 14 -Pair customfield_22311 -outputfile spillover_with_pair.tsv
 ```
 
 ### <a name='Appendmodefeature'></a>Append mode feature
@@ -465,7 +475,7 @@ The tool provides detailed progress information including:
 * Project validation results
 * JQL query construction
 * API request progress and batch information
-* Issue processing and story point calculations
+* Issue processing and with the optional '-debug' command line switch, display of each work item's sprint data during processing
 
 All debug information is logged to timestamped log files for later analysis.
 
