@@ -443,12 +443,11 @@ Logs include:
    * Ensure you have write permissions to the target directory
    * Check that the output filename doesn't contain invalid characters
    * Verify the output directory exists (the tool creates files but not directories)
-   * When using `-append`, ensure the existing file format matches the specified `-outfmt`
+   * When using `-append`, ensure the existing file format matches
 
 7. **Automatic date detection issues**
    * If no date range is detected, verify the project contains resolved issues
    * Check that issues have valid resolution dates in Jira
-   * Ensure the project has completed work items (not just open issues)
 
 ### <a name='Debuginformation'></a>Debug information
 
