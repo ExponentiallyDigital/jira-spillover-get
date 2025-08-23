@@ -1,5 +1,5 @@
 // *************************************************************************************************
-// jira-spillover-get.go by Andrew Newbury, 2025-08-16
+// jira-spillover-get.go by Andrew Newbury, 2025-08-24
 //
 //     Purpose: Returns Jira issues (except epics, risks, and sub-tasks) for the user specified project
 //		that have been modified within a user defined number of days that have also been worked
@@ -38,6 +38,7 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//	0.1.5 updated productName & README
 //	0.1.4a cosmetic comment format changes
 //	0.1.4 code optimisation and comment updates, no functional changes, upadted README.md, added DAIGRAMS.md
 //	0.1.3 FIX lookup and return epic summaries, not epic titles; FIX Pair counter
