@@ -38,6 +38,7 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//	0.1.6 packaged for release
 //	0.1.5 updated productName & README
 //	0.1.4a cosmetic comment format changes
 //	0.1.4 code optimisation and comment updates, no functional changes, upadted README.md, added DAIGRAMS.md
@@ -101,7 +102,7 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.1.4a"
+	programVersion = "0.1.6"
 )
 
 // Default configuration constants
