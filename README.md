@@ -1,6 +1,6 @@
-# jira-spillover-get
+# jira-spillover-get ![Release](https://img.shields.io/github/v/release/ExponentiallyDigital/jira-spillover-get) ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue) ![License](https://img.shields.io/github/license/ExponentiallyDigital/jira-spillover-get)
 
-A tool to identify and report on Jira "spillover": work items that weren't completed within their originally planned sprint. This tools helps teams track delivery efficiency and improve planning.
+A tool to identify and report Jira "spillover": work items that weren't completed within their originally planned sprint(s). Combine with [*jira-spillover-chart*](https://github.com/ExponentiallyDigital/jira-spillover-chart) to transform data into comprehensive charts, pivot tables, and performance insights enabling delivery pattern analysis and optimisation of workflow efficiency.
 
 #### Table of contents
 <!-- vscode-markdown-toc -->

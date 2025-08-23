@@ -1,13 +1,12 @@
 // *************************************************************************************************
 // jira-spillover-get.go by Andrew Newbury, 2025-08-16
 //
-//		Purpose: Returns Jira issues (except epics, risks, and sub-tasks) for the user specified project
-//	          that have been modified within a user defined number of days that have also been worked
-//	          on in more than one sprint. Displays results to screen and exports to tab separated
-//	          text file for importing and manipulation by Excel or similar tools.
+//     Purpose: Returns Jira issues (except epics, risks, and sub-tasks) for the user specified project
+//		that have been modified within a user defined number of days that have also been worked
+//		on in more than one sprint. Displays results to screen and exports to tab separated
+//		text file for importing and manipulation by Excel or similar tools.
 //
-// Features: Command line interface with interactive fallback for missing parameters
-//
+//    Features: Command line interface with interactive fallback for missing parameters
 //	        Token file authentication support with Base64 encoding
 //	        Configurable Jira base URL via command line or interactive prompt
 //	        Days prior filtering for modified issues
@@ -39,13 +38,14 @@
 //	/rest/api/2/issue/{issueKey} - Retrieves epic title information
 //
 // History (update version string on line ~95):
+//	0.1.4a cosmetic comment format changes
 //	0.1.4 code optimisation and comment updates, no functional changes, upadted README.md, added DAIGRAMS.md
 //	0.1.3 FIX lookup and return epic summaries, not epic titles; FIX Pair counter
 //	0.1.2 FIX extract sprint names from both arrays of maps (the current Jira API format) and legacy string formats
-//  0.1.1 updated default custom names for out-of-the-box Jira Cloud (except Pair, which is a custom added field)
-//  0.1.0 pair field provied optionally va command line
-//  0.0.9 Changed "Sub Task" to "Sub-Task" to match Cloud out of box configuration
-//  0.0.8 FIX golangci-lint recommendations (testing returns from resp.Body.Close(), file.Close, and logFile.Close))
+//	0.1.1 updated default custom names for out-of-the-box Jira Cloud (except Pair, which is a custom added field)
+//	0.1.0 pair field provied optionally va command line
+//	0.0.9 Changed "Sub Task" to "Sub-Task" to match Cloud out of box configuration
+//	0.0.8 FIX golangci-lint recommendations (testing returns from resp.Body.Close(), file.Close, and logFile.Close))
 //	0.0.7 updated README.md, version bump
 //	0.0.6 updated sample prompts
 //	0.0.5 cosmetic source code changes
@@ -53,10 +53,10 @@
 //	0.0.3 added "components" field to output, execution time dispalyed on exit, output defaults to .tsv
 //	0.0.2 added optional append to output file
 //	0.0.1 initial Go port from PowerShell jira-spillover-chart-data.ps1 v0.1.15
-//		  converted PowerShell script to Go using jira-calc-sp.go as template
-//		  maintained all core functionality including logging and multi-sprint detection
-//		  added pagination for large result sets
-//		  added epic title lookups with batch processing
+//		converted PowerShell script to Go using jira-calc-sp.go as template
+//		maintained all core functionality including logging and multi-sprint detection
+//		added pagination for large result sets
+//		added epic title lookups with batch processing
 //
 // To do:
 //
@@ -100,7 +100,7 @@ import (
 // Program metadata - update these values when changing the program
 const (
 	programName    = "jira-spillover-get"
-	programVersion = "0.1.4"
+	programVersion = "0.1.4a"
 )
 
 // Default configuration constants
